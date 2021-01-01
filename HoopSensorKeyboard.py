@@ -1,16 +1,22 @@
 import keyboard
+import threading
 import time
 
 class HoopSensor:
     def __init__(self, m_signal, m_cb):
-        self.key = m_signal
+        self.signal = m_signal
         self.cb = m_cb
-        #todo setup thread here
+        self.dbDelay = 0.25
+        self.runIt = True
+        self.keythread = threading.Thread(target=self.__keyboardThread, args=(1,), daemon=True)
+        self.keythread.start()
 
-    def __keyboardThread(self):
-        while 1:
-            if keyboard.read_key() == self.key:
-                self.cb(self.key)
+    def __keyboardThread(self,name):
+        while self.runIt == True:
+            if keyboard.read_key() == self.signal:
+                self.cb(self.signal)
+                time.sleep(self.dbDelay)
 
     def cleanup(self):
-        # no need to do anything here
+        self.runIt = False
+        self.keythread.join()
