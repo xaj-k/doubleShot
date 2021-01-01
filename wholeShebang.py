@@ -1,7 +1,8 @@
 import tkinter as tk
 import tk_tools
 import time
-import HoopSensor as hs
+#import HoopSensor as hs
+import HoopSensorKeyboard as hs
 import BuzzerChime as bc
 import Buttons as btn
 
@@ -15,8 +16,8 @@ homeGPIO = 17
 visitorGPIO = 27
 homeKey = 'h'
 visitorKey = 'v'
-homeSignal = homeGPIO
-visitorSignal = visitorGPIO
+homeSignal = homeKey #homeGPIO
+visitorSignal = visitorKey #visitorGPIO
 # game values
 gameMode = None
 # widget handles
@@ -68,26 +69,25 @@ class TimeKeeper():
         self.root = m_root
         self.buzzer = bc.BuzzerChime(0.5, 'sawtooth', 1.5, m_freq)
         self.hurryBuzzer = bc.BuzzerChime(0.5, 'square', 0.25, m_freq)
-        self.runIt = True
+        self.runIt = False
         #m_root.after(1000, self.__update_time)
         self.reset()
 
     def __update_time(self):
-        if self.gameTime > 1:
+        if self.gameTime > 1 and self.runIt == True:
             self.gameTime -= 1
-            if self.runIt == True:
-                self.root.after(1000, self.__update_time)
             if self.gameTime < 6:
                 self.hurryBuzzer.chime()
+            self.root.after(1000, self.__update_time)
         else:
             self.gameTime = 0
+            self.runIt = False
             self.buzzer.chime()
         self.ssWidget.set_value(str(self.gameTime))
 
     def start(self, time):
-        mtime = self.gameTime
         self.gameTime = time + 1
-        if 1:#not mtime > 0:
+        if self.runIt == False:
             self.runIt = True
             self.__update_time()
         
@@ -95,8 +95,11 @@ class TimeKeeper():
         return self.gameTime
 
     def reset(self):
-        self.gameTime = self.defaultTime
-        self.ssWidget.set_value(str(self.gameTime))
+        if self.runIt == False:
+            self.start(self.defaultTime)
+        else:
+            self.gameTime = self.defaultTime
+            self.ssWidget.set_value(str(self.gameTime))
     
     def cleanup(self):
         self.reset()
@@ -104,6 +107,11 @@ class TimeKeeper():
 
 
 ## functions ##
+
+def restartGame():
+    timeKeeper.reset()
+    homeTeam.reset()
+    visitorTeam.reset()
 
 def quit():
     global homeTeam
@@ -136,6 +144,13 @@ frame.pack(fill=tk.BOTH, expand=True)
 # Allow middle cell of grid to grow when window is resized
 frame.columnconfigure(1, weight=1)
 frame.rowconfigure(1, weight=1)
+# button containers
+# frameb = tk.Frame(frame, background='grey')
+# # Lay out the main container, specify that we want it to grow with window size
+# frameb.pack(fill=tk.BOTH, expand=True)
+# # Allow middle cell of grid to grow when window is resized
+# frameb.columnconfigure(1, weight=1)
+# frameb.rowconfigure(1, weight=1)
 
 ## setup timekeeper ##
 
@@ -147,11 +162,16 @@ timeKeeper = TimeKeeper(frame, 220)
 homeTeam = Team(frame, timeKeeper, homeSignal, 440)
 visitorTeam = Team(frame, timeKeeper, visitorSignal, 330)
 
+## setup game buttons ##
+reset_button = tk.Button(frame, text="Restart", command=restartGame)
+
 
 # place widgets
 timeKeeper.ssWidget.grid(row=0, column=1)
 homeTeam.ssWidget.grid(row=2, column=0, sticky=tk.E)
 visitorTeam.ssWidget.grid(row=2, column=2, sticky=tk.W)
+reset_button.grid(row=0,column=0)
+reset_button.focus()
 
 ## setup buttons ##
 
