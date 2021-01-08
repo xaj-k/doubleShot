@@ -1,8 +1,8 @@
 import tkinter as tk
 import tk_tools
 import time
-#import HoopSensor as hs
-import HoopSensorKeyboard as hs
+import HoopSensor as hs
+#import HoopSensorKeyboard as hs
 import BuzzerChime as bc
 import Buttons as btn
 
@@ -16,8 +16,8 @@ homeGPIO = 17
 visitorGPIO = 27
 homeKey = 'h'
 visitorKey = 'v'
-homeSignal = homeKey #homeGPIO
-visitorSignal = visitorKey #visitorGPIO
+homeSignal = homeGPIO
+visitorSignal = visitorGPIO
 # game values
 gameMode = None
 # widget handles
@@ -137,6 +137,7 @@ def handleKeypress(key):
 
 root = tk.Tk()
 root.title("Double Shot!")
+#root.attributes('-fullscreen', True)
 # Create the main container
 frame = tk.Frame(root, background='black')
 # Lay out the main container, specify that we want it to grow with window size
@@ -164,13 +165,14 @@ visitorTeam = Team(frame, timeKeeper, visitorSignal, 330)
 
 ## setup game buttons ##
 reset_button = tk.Button(frame, text="Restart", command=restartGame)
+fillerLabel = tk.Label(frame)
 
 
 # place widgets
 timeKeeper.ssWidget.grid(row=0, column=1)
-homeTeam.ssWidget.grid(row=2, column=0, sticky=tk.E)
-visitorTeam.ssWidget.grid(row=2, column=2, sticky=tk.W)
-reset_button.grid(row=0,column=0)
+homeTeam.ssWidget.grid(row=2, column=0)
+visitorTeam.ssWidget.grid(row=2, column=2)
+reset_button.grid(row=0, column=0)
 reset_button.focus()
 
 ## setup buttons ##
@@ -181,7 +183,7 @@ keyScanner = btn.Button(handleKeypress)
 
 try:
     # todo call other setups
-    #root.attributes('-fullscreen', True)
+    
     #root.after(1000, timeKeeper.update_time())
     timeKeeper.start(30)
     root.mainloop()
