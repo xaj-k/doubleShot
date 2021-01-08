@@ -1,8 +1,10 @@
 import tkinter as tk
-import tk_tools
+from enum import Enum, auto
+import random
+import threading
 import time
-import HoopSensor as hs
-#import HoopSensorKeyboard as hs
+#import HoopSensor as hs
+import HoopSensorKeyboard as hs
 import BuzzerChime as bc
 import Buttons as btn
 
@@ -16,179 +18,112 @@ homeGPIO = 17
 visitorGPIO = 27
 homeKey = 'h'
 visitorKey = 'v'
-homeSignal = homeGPIO
-visitorSignal = visitorGPIO
-# game values
-gameMode = None
-# widget handles
-gametimeDisplay = None
+homeSignal = homeKey#homeGPIO
+visitorSignal = visitorKey#visitorGPIO
 # other
-fullscreen = False
-root = None
-keyScanner = None
+correctSignal = None
+gameState = None
+wrongbuzzer = None
+rightbuzzer = None
 
-## define classes ##
+## classes ##
 
-#class Chime():
-#    def __init__(self):
-
-class Team():
-    global gameMode
-    def __init__(self, m_root, m_timeKeeper, m_hoopSignal, m_freq):
-        self.score = 0
-        self.timeKeeper = m_timeKeeper
-        self.ssWidget = tk_tools.SevenSegmentDigits(m_root, digits=2, background='black', digit_color='red', height=300)
-        self.ssWidget.set_value(str(0))
-        self.hoopSensor = hs.HoopSensor(m_hoopSignal, self.__handleScore)
-        self.buzzer = bc.BuzzerChime(0.25, 'sine', 0.125, m_freq)
-
-    def __handleScore(self, hoopSignal):
-        if 1: #self.timeKeeper.getTime() > 0:
-            if hoopSignal == self.hoopSensor.signal:
-                self.addPoint(1)
-                self.ssWidget.set_value(str(self.score))
-                self.buzzer.chime() # todo have this called from a separate thread (set a semaphore to signal the thread to play it)
-
-    def reset(self):
-        self.score = 0
-        self.ssWidget.set_value(str(self.score))
-
-    def addPoint(self, points):
-        self.score += 1
-    
-    def cleanup(self):
-        self.reset()
-        self.hoopSensor.cleanup()
-
-class TimeKeeper():
-    global gameMode
-    def __init__(self, m_root, m_freq):
-        self.ssWidget = tk_tools.SevenSegmentDigits(m_root, digits=2, background='black', digit_color='yellow', height=175)
-        self.defaultTime = 30
-        self.gameTime = 0
-        self.root = m_root
-        self.buzzer = bc.BuzzerChime(0.5, 'sawtooth', 1.5, m_freq)
-        self.hurryBuzzer = bc.BuzzerChime(0.5, 'square', 0.25, m_freq)
-        self.runIt = False
-        #m_root.after(1000, self.__update_time)
-        self.reset()
-
-    def __update_time(self):
-        if self.gameTime > 1 and self.runIt == True:
-            self.gameTime -= 1
-            if self.gameTime < 6:
-                self.hurryBuzzer.chime()
-            self.root.after(1000, self.__update_time)
-        else:
-            self.gameTime = 0
-            self.runIt = False
-            self.buzzer.chime()
-        self.ssWidget.set_value(str(self.gameTime))
-
-    def start(self, time):
-        self.gameTime = time + 1
-        if self.runIt == False:
-            self.runIt = True
-            self.__update_time()
-        
-    def getTime(self):
-        return self.gameTime
-
-    def reset(self):
-        if self.runIt == False:
-            self.start(self.defaultTime)
-        else:
-            self.gameTime = self.defaultTime
-            self.ssWidget.set_value(str(self.gameTime))
-    
-    def cleanup(self):
-        self.reset()
-        self.runIt = False
-
+class GameState(Enum):
+    ANSWERING = auto()
+    CORRECT = auto()
+    INCORRECT = auto()
 
 ## functions ##
 
-def restartGame():
-    timeKeeper.reset()
-    homeTeam.reset()
-    visitorTeam.reset()
+def showAnswer(signal):
+    global hstr, vstr
+    global homeSignal
+    if signal == homeSignal:
+        vstr = ' '
+    else:
+        hstr = ' '
 
-def quit():
-    global homeTeam
-    global visitorTeam
-    global keyScanner
-    global timeKeeper
-    visitorTeam.cleanup() # cleanup
-    homeTeam.cleanup() # cleanup
-    keyScanner.cleanup() # cleanup
-    timeKeeper.cleanup()
-    SystemExit()
 
-def handleKeypress(key):
-    global timeKeeper
-    if key == 'r' or key == 'R':
-        timeKeeper.start(30)
-        homeTeam.reset()
-        visitorTeam.reset()
-    elif key == 'q' or key == 'Q':
-        quit()
+def generateQuestion():
+    global gameState
+    global qstr, hstr, vstr
+    global correctSignal,homeSignal,visitorSignal
+    a = random.randint(2, 9)
+    b = random.randint(2, 9)
+    qstr.set('%ix%i'%(a,b))
+    if random.randint(0,1):
+        hstr.set('%i'%(a*b))
+        vstr.set('%i'%(a*b-3))
+        correctSignal = homeSignal
+    else:
+        vstr.set('%i'%(a*b))
+        hstr.set('%i'%(a*b+4))
+        correctSignal = visitorSignal
+    gameState = GameState.ANSWERING
+
+def handleScore(signal):
+    global correctSignal # if this doesn't work, use a get to return homeSignal/visitorSignal
+    global gameState
+    global wrongbuzzer
+    if gameState == GameState.ANSWERING:
+        if signal == correctSignal:
+            print("correct!")
+            gameState = GameState.CORRECT
+            rightbuzzer.chime()
+        else:
+            print("wrong!")
+            gameState = GameState.INCORRECT
+            wrongbuzzer.chime()
+        #showAnswer(signal)
+        generateQuestion()
+
+def graphicsThread(evt):
+    while True:
+        evt.wait()
+        # do stuff
+        #time.sleep(200) # todo use semaphores to signal this thread when game states change
+        evt.clear()
 
 ## setup windows/widgets ##
 
 root = tk.Tk()
 root.title("Double Shot!")
-#root.attributes('-fullscreen', True)
 # Create the main container
 frame = tk.Frame(root, background='black')
 # Lay out the main container, specify that we want it to grow with window size
 frame.pack(fill=tk.BOTH, expand=True)
-# Allow middle cell of grid to grow when window is resized
-frame.columnconfigure(1, weight=1)
-frame.rowconfigure(1, weight=1)
-# button containers
-# frameb = tk.Frame(frame, background='grey')
-# # Lay out the main container, specify that we want it to grow with window size
-# frameb.pack(fill=tk.BOTH, expand=True)
-# # Allow middle cell of grid to grow when window is resized
-# frameb.columnconfigure(1, weight=1)
-# frameb.rowconfigure(1, weight=1)
-
-## setup timekeeper ##
-
-timeKeeper = TimeKeeper(frame, 220)
-
-
-## setup teams ##
-
-homeTeam = Team(frame, timeKeeper, homeSignal, 440)
-visitorTeam = Team(frame, timeKeeper, visitorSignal, 330)
-
-## setup game buttons ##
-reset_button = tk.Button(frame, text="Restart", command=restartGame)
-fillerLabel = tk.Label(frame)
-
-
+# labels for question, answers
+qstr = tk.StringVar()
+hstr = tk.StringVar()
+vstr = tk.StringVar()
+questionWidget = tk.Label(frame, textvariable=qstr, font=("Courier", 75), fg='red', bg='black')
+homeWidget = tk.Label(frame, textvariable=hstr, font=("Courier", 100), fg='red', bg='black')
+visitorWidget = tk.Label(frame, textvariable=vstr, font=("Courier", 100), fg='red', bg='black')
 # place widgets
-timeKeeper.ssWidget.grid(row=0, column=1)
-homeTeam.ssWidget.grid(row=2, column=0)
-visitorTeam.ssWidget.grid(row=2, column=2)
-reset_button.grid(row=0, column=0)
-reset_button.focus()
+questionWidget.grid(row=0, column=1,sticky=tk.N)
+homeWidget.grid(row=2, column=0,sticky=tk.SW)
+visitorWidget.grid(row=2, column=2, sticky=tk.SE)
 
-## setup buttons ##
+## setup hoop sensors ##
 
-keyScanner = btn.Button(handleKeypress)
+homeHoop = hs.HoopSensor(homeSignal, handleScore)
+visitorHoop = hs.HoopSensor(visitorSignal, handleScore)
+wrongbuzzer = bc.BuzzerChime(0.5, 'sawtooth', 0.25, 300)
+rightbuzzer = bc.BuzzerChime(0.5, 'sine', 0.15, 600)
 
-##  main  ##
+e = threading.Event()
+gThread = threading.Thread(target=graphicsThread, args=(e,), daemon=True)
+# use gThread.start() to start
+# then use e.set() to set flag and e.clear() to e.clear() to clear
 
+## initialize game variables ##
+
+gameState = GameState.ANSWERING
+generateQuestion()
 try:
-    # todo call other setups
-    
-    #root.after(1000, timeKeeper.update_time())
-    timeKeeper.start(30)
     root.mainloop()
     while 1:
         time.sleep(0.5)
-except KeyboardInterrupt: # If CTRL+C is pressed, exit cleanly:
-    homeTeam.cleanup() # cleanup
-    visitorTeam.cleanup() # cleanup
+except KeyboardInterrupt:
+    homeHoop.cleanup()
+    visitorHoop.cleanup()
