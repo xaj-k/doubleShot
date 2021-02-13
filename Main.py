@@ -3,8 +3,9 @@ import queue, threading
 import random
 from sys import platform
 from enum import Enum, auto
-from Audio import *
-from Graphics import *
+
+import Audio
+import Graphics
 
 if platform == "linux" or platform == "linux2":
     import HoopSensor as hs # use gpio
@@ -16,6 +17,16 @@ homeGPIO = 17
 visitorGPIO = 27
 homeKey = 'h'
 visitorKey = 'v'
+
+gameState = None
+gameTime = None
+
+homebuzzer = None
+visitorbuzzer = None
+hurryupbuzzer = None
+gameoverbuzzer = None
+correctbuzzer = None
+wrongbuzzer = None
 
 # classes
 class GameState(Enum):
@@ -35,15 +46,22 @@ class GameEvent(Enum):
     BUTTON_HELD = auto()
     GAMESTATE_CHANGED = auto()
 
-# todo consider moving ux objects to separate file
-
+class BuzzerSelect(Enum):
+    HOME_BUZZER = auto()
+    VISITOR_BUZZER = auto()
+    CORRECT_BUZZER = auto()
+    WRONG_BUZZER = auto()
+    HURRYUP_BUZZER = auto()
+    GAMEOVER_BUZZER = auto()
 
 class DoubleShotGameObj():
     def __init__(self, mhomesignal, mvisitorsignal):
         # game variables
-        self.games = ["Classic", "Multiplication", "Addition"]
+        self.config = None
+        #self.games = ["Classic", "Multiplication", "Addition"]
         self.gameState = GameState.IDLE
         self.gameTime = 0
+        self.homeIsCorrect = True
         # timers
         self.gameTimer = None
         # buzzers
@@ -60,14 +78,6 @@ class DoubleShotGameObj():
         # internal variables
         self.q = queue.Queue() # semaphore for injecting events into game state machine
         self.__blink = False
-        # ux objects
-        self.gameUX = DoubleShotUXObj()
-        self.configUX = GameConfigUXObj(self.games, self.__receiveGameConfig)
-        self.gameConfig = self.configUX.getConfig() # retrieve default config
-        # other config items
-        self.hurryUpThreshold = 5
-        self.limboPeriod = 2.0
-        self.mathConfig = MathConfig()
     def __receiveGameConfig(self, conf):
         self.gameConfig = conf #todo check config validity
     def startGame(self):
@@ -76,27 +86,44 @@ class DoubleShotGameObj():
 
 # functions
 
+# todo have class constructor take 'name' as argument and keep array of buzzers and move this getter there
+
+def getBuzzer(b):
+    if b == BuzzerSelect.CORRECT_BUZZER:
+        return correctbuzzer
+    elif b == BuzzerSelect.WRONG_BUZZER:
+        return wrongbuzzer
+    elif b == BuzzerSelect.HOME_BUZZER:
+        return homebuzzer
+    elif b == BuzzerSelect.VISITOR_BUZZER:
+        return visitorbuzzer
+    elif b == BuzzerSelect.HURRYUP_BUZZER:
+        return hurryupbuzzer
+    elif b == BuzzerSelect.GAMEOVER_BUZZER:
+        return gameoverbuzzer
+
 # todo consider having handleXEvent for each gameType each in a respective file (e.g. multiplicationEventHandlers.py, classicEventHandlers.py, etc.)
 def handleTimerEvent(gameObj):
-    if gameObj.gameState == GameState.ANSWERING:
+    global gameState, gameTime
+    if gameState == GameState.ANSWERING:
         # update time display
-        gameObj.gameUX.write_display(DisplayType.TIME_DISPLAY,'%i'%gameObj.gameTime)
+        Graphics.writeDisplay(DisplayType.TIME_DISPLAY,'%i'%gameTime)
         # if time less than hurryUpThreshold, sound hurryupbuzzer
-        if gameObj.gameTime > 0 and gameObj.gameTime <= gameObj.hurryUpThreshold:
-            gameObj.hurryupbuzzer.chime()
+        if gameTime > 0 and gameTime <= config.hurryupThreshold:
+            getBuzzer(BuzzerSelect.HURRYUP_BUZZER).chime()
         # if time is zero, sound timesup buzzer and end the game
         else:
-            gameObj.gameState = GameState.GAMEOVER
-            gameObj.gameoverbuzzer.chime()
-            gameObj.gameTimer = threading.Timer(gameObj.limboPeriod, decGameTime) # stay in gameover state for 2 seconds
-    elif gameObj.gameState in [GameState.CORRECT, GameState.INCORRECT]:
+            gameState = GameState.GAMEOVER
+            getBuzzer(BuzzerSelect.GAMEOVER_BUZZER).chime()
+            gameObj.gameTimer = threading.Timer(config.limboPeriod, decGameTime) # stay in gameover state for 2 seconds
+    elif gameState in [GameState.CORRECT, GameState.INCORRECT]:
         # reset gameTime
-        gameObj.gameTime = gameObj.gameConfig.timeSet
-        gameObj.gameUX.write_display(DisplayType.TIME_DISPLAY, '%i'%gameObj.gameTime)
+        gameTime = config.timeSet
+        Graphics.writeDisplay(DisplayType.TIME_DISPLAY, '%i'%gameObj.gameTime)
         # generate new question
-        a = random.randint(gameObj.mathConfig.amin, gameObj.mathConfig.amax)
-        b = random.randint(gameObj.mathConfig.bmin, gameObj.mathConfig.bmax)
-        if gameObj.gameConfig.gameSelect == gameObj.games.index("Multiplication"):
+        a = random.randint(config.mathConfig.amin, config.mathConfig.amax)
+        b = random.randint(config.mathConfig.bmin, config.mathConfig.bmax)
+        if config.gameSelect == config.games.index("Multiplication"): # todo refactor to be a function something like get_abco(config)
             c = a*b
             op = 'x'
         else:
@@ -107,30 +134,30 @@ def handleTimerEvent(gameObj):
         else:
             w = c + random.randint(2, 6)
         # update question/answer displays
-        gameObj.gameUX.write_display(DisplayType.MESSAGE_DISPLAY,"%i %s %i = __"%(a,op,b))
+        Graphics.writeDisplay(DisplayType.MESSAGE_DISPLAY,"%i %s %i = __"%(a,op,b))
         if random.randint(0,1):
             gameObj.homeIsCorrect = True
-            gameObj.gameUX.write_display(DisplayType.HOME_DISPLAY,"%i"%c)
-            gameObj.gameUX.write_display(DisplayType.VISITOR_DISPLAY,"%i"%w)
+            Graphics.writeDisplay(DisplayType.HOME_DISPLAY,"%i"%c)
+            Graphics.writeDisplay(DisplayType.VISITOR_DISPLAY,"%i"%w)
         else:
             gameObj.homeIsCorrect = False
-            gameObj.gameUX.write_display(DisplayType.HOME_DISPLAY,"%i"%w)
-            gameObj.gameUX.write_display(DisplayType.VISITOR_DISPLAY,"%i"%c)
+            Graphics.writeDisplay(DisplayType.HOME_DISPLAY,"%i"%w)
+            Graphics.writeDisplay(DisplayType.VISITOR_DISPLAY,"%i"%c)
         # update gameState to ANSWERING
-        gameObj.gameState = GameState.ANSWERING
-    elif gameObj.gameState == GameState.PAUSED:
+        gameState = GameState.ANSWERING
+    elif gameState == GameState.PAUSED:
         # toggle time display (timer)
         if gameObj.__blink == True:
-            gameObj.gameUX.write_display(DisplayType.TIME_DISPLAY, ' ')
+            Graphics.writeDisplay(DisplayType.TIME_DISPLAY, ' ')
             gameObj.__blink = False
         else:
-            gameObj.gameUX.write_display(DisplayType.TIME_DISPLAY, '%i'%gameObj.gameTime)
+            Graphics.writeDisplay(DisplayType.TIME_DISPLAY, '%i'%gameObj.gameTime)
             gameObj.__blink = True
-    elif gameObj.gameState == GameState.GAMEOVER:
+    elif gameState == GameState.GAMEOVER:
         # clear all displays
         gameObj.gameUX.clear_all_displays()
         # update gameState to IDLE
-        gameObj.gameState == GameState.IDLE
+        gameState == GameState.IDLE
 
 def decGameTime(self):
     if self.gameTime > 0:
@@ -139,7 +166,8 @@ def decGameTime(self):
     self.q.put(GameEvent.GAMETIME_UPDATED)
 
 def handleScoreEvent(gameObj, homeScored):
-    if gameObj.gameState == GameState.ANSWERING:
+    global gameState
+    if gameState == GameState.ANSWERING:
         if gameObj.gameSelect != gameObj.games.index("Classic"):
             if (homeScored and gameObj.homeIsCorrect) or (not homeScored and not gameObj.homeScored):
                 # pause time
@@ -155,9 +183,9 @@ def handleScoreEvent(gameObj, homeScored):
                 gameObj.hStrVar.set(' ')
                 gameObj.vStrVar.set(' ')
                 # update game state so that after brief delay we generate a new question and resume time
-                gameObj.gameState = GameState.CORRECT
+                gameState = GameState.CORRECT
                 # sound correct buzzer
-                gameObj.rightbuzzer.chime()
+                getBuzzer(BuzzerSelect.rightbuzzer).chime()
             else:
                 # pause time
                 if gameObj.gameTimer != None:
@@ -169,22 +197,22 @@ def handleScoreEvent(gameObj, homeScored):
                 else:
                     gameObj.hStrVar.set(' ')
                 # generate new question after 1 second and resume time
-                gameObj.gameState = GameState.INCORRECT
+                gameState = GameState.INCORRECT
                 # sound wrong buzzer
-                gameObj.wrongbuzzer.chime()
+                getBuzzer(BuzzerSelect.wrongbuzzer).chime()
         else: # game is classic
             if homeScored:
                 # update score board
                 gameObj.homeScore += 1
                 gameObj.hStrVar.set('%i'%gameObj.homeScore)
                 # sound the buzzer
-                gameObj.homebuzzer.chime()
+                getBuzzer(BuzzerSelect.homebuzzer).chime()
             else:
                 gameObj.visitorScore += 1
                 gameObj.vStrVar.set('%i'%gameObj.visitorScore)
                 # sound the buzzer
-                gameObj.visitorbuzzer.chime()
-    elif gameObj.gameState == GameState.IDLE:
+                getBuzzer(BuzzerSelect.visitorbuzzer).chime()
+    elif gameState == GameState.IDLE:
         # todo start new game!
         pass
 
@@ -192,6 +220,9 @@ def handleScoreEvent(gameObj, homeScored):
 
 # setup variables
 
+def __init__():
+    gameState = GameState.IDLE
+    gameTime = 30 #?? may not need this any more!
 
 # main program
 if __name__ == "__main__":
