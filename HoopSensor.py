@@ -4,9 +4,10 @@ import time
 debounceDelay=0.01
 
 class HoopSensor:
-    def __init__(self, m_signal, m_cb):
+    def __init__(self, m_signal, m_name, m_cb, m_obj):
         global debounceDelay
         self.signal = m_signal
+        self.cbData = m_obj
         self.cb = m_cb
         self.dbDelay = debounceDelay
         GPIO.setmode(GPIO.BCM)
@@ -18,7 +19,7 @@ class HoopSensor:
     def __dunkHandler(self, signal):
         time.sleep(0.05)
         if GPIO.input(signal):
-            self.cb(signal)
+            self.cb(self.cbData, signal, True)
 
     def cleanup(self):
         GPIO.cleanup() # cleanup all GPIO

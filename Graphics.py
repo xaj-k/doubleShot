@@ -3,6 +3,9 @@ import threading
 from enum import Enum, auto
 from functools import partial
 
+# xdpyinfo | grep 'dimensions:'
+#       1280 x 1024
+
 class DisplayType(Enum):
     HOME_DISPLAY = auto()
     VISITOR_DISPLAY = auto()
@@ -45,6 +48,9 @@ _vStrVar = None # visitor string variable
 _sStrVar = None # score string variable
 _tStrVar = None # time string variable
 _mStrVar = None # message string variable
+# buttons for software to use
+_btnSel = None
+_btns = []
 # configs
 _config = None
 
@@ -82,13 +88,21 @@ def __selectNextGame__(var):
     print(len(_config.games))
     var.set(_config.games[_config.gameSelect])
 
+def __updateButtons__():
+    global _btnSel, _btns
+    for b in _btns:
+        b.config(borderwidth=1)
+    _btns[_btnSel].config(borderwidth=10)
+
 # startCB must take GameConfig() class as input argument
 def init(games, startCB):
-    global _config, _classicGameFrame, _mathGameFrame, _configFrame, _countdownFrame, _hStrVar, _vStrVar, _sStrVar, _tStrVar, _mStrVar
+    global _config, _classicGameFrame, _mathGameFrame, _configFrame, _countdownFrame, _hStrVar, _vStrVar, _sStrVar, _tStrVar, _mStrVar, _btns, _btnSel
 
     _config = GameConfig(games)
     root = tk.Tk()
     root.title("Double Shot!")
+    root.geometry('1280x1024')
+    # todo set fullscreen here
     # create the various windows
     _classicGameFrame = tk.Frame(root, background='black')
     _mathGameFrame = tk.Frame(root, background='black')
@@ -105,43 +119,87 @@ def init(games, startCB):
     _sStrVar = tk.StringVar() # score string variable
     _tStrVar = tk.StringVar() # time string variable
     _mStrVar = tk.StringVar() # message string variable
-    ## init config display ##
-    # countdown variable and widget
+    root.rowconfigure(0, weight=1)
+    root.columnconfigure(0, weight=1)
+    root.grid_propagate(0)
+    ## init countdown display ##
     countDownVar = tk.IntVar()
     countDownVar.set(_config.startDelay)
-    tk.Label(_countdownFrame, textvariable=countDownVar, font=("Courier", 200), fg='red', bg='black').pack()
+    tk.Label(_countdownFrame, textvariable=countDownVar, font=("Courier", 200), fg='red', bg='black').pack(pady=200)
+    ## init config display ##
+    # place holder to shift all buttons right
+    tk.Label(_configFrame, bg='black', width=50).grid(row=0,column=0)
+    # start button
+    _startButton = tk.Button(_configFrame, text="Start", width=8, bg='black', fg='red', font=("Courier", 20), command=partial(__countDown__, _countdownFrame, countDownVar, startCB))
+    _startButton.grid(row=0, rowspan=2, column=1, pady=(200,10))
+    _btns.append(_startButton)
     # gameselect variable, buttons and label
     _gameSelectStringVar = tk.StringVar()
     _gameSelectStringVar.set(_config.games[_config.gameSelect])
-    gameSelectFrame = tk.Frame(_configFrame, background='black')
-    gameSelectFrame.pack()
-    tk.Label(gameSelectFrame, textvariable=_gameSelectStringVar).grid(row=0,column=0) # label for configuring game
-    tk.Button(gameSelectFrame, text="+", command=partial(__selectNextGame__, _gameSelectStringVar)).grid(row=0,column=1)
+    tk.Label(_configFrame, textvariable=_gameSelectStringVar, bg='black', fg='red', width=20, borderwidth=3, relief="ridge", font=("Courier", 20)).grid(row=2, column=2, rowspan=2) # label for configuring game
+    _gameSelectButton = tk.Button(_configFrame, text=">", width=8, bg='black', fg='red', font=("Courier", 20), command=partial(__selectNextGame__, _gameSelectStringVar))
+    _gameSelectButton.grid(row=2, column=1, rowspan=2, pady=10)
+    _btns.append(_gameSelectButton)
     # timeset buttons/label
     _timeSetIntVar = tk.IntVar()
     _timeSetIntVar.set(_config.timeSet)
-    timeSetFrame = tk.Frame(_configFrame, background='black')
-    timeSetFrame.pack()
-    tk.Button(timeSetFrame, text="-", command=partial(__incTime__, False, _timeSetIntVar)).grid(row=0,column=0) # NOTE, to animate/highlight, you may need to store handle before placing on grid
-    tk.Label(timeSetFrame, textvariable=_timeSetIntVar).grid(row=0,column=1)
-    tk.Button(timeSetFrame, text="+", command=partial(__incTime__, True, _timeSetIntVar)).grid(row=0,column=2) # NOTE, to animate/highlight, you may need to store handle before placing on grid
-    # start button
-    tk.Button(_configFrame, text="Start", command=partial(__countDown__, _countdownFrame, countDownVar, startCB)).pack()
+    tk.Label(_configFrame, textvariable=_timeSetIntVar, bg='black', fg='red', borderwidth=3, relief="ridge", width=20, font=("courier", 20)).grid(row=4, column=2, rowspan=2, pady=10)
+    _timesetUpButton = tk.Button(_configFrame, text="+", width=16, bg='black', fg='red', font=("courier", 10), command=partial(__incTime__, True, _timeSetIntVar))
+    _timesetDownButton = tk.Button(_configFrame, text="-", width=16, bg='black', fg='red', font=("courier", 10), command=partial(__incTime__, False, _timeSetIntVar))
+    _timesetUpButton.grid(row=4, column=1, pady=(10,0))
+    _timesetDownButton.grid(row=5 ,column=1)
+    _btns.append(_timesetUpButton)
+    _btns.append(_timesetDownButton)
+     # start with 1st button selected and highlight selected button
+    _btnSel = 0
+    __updateButtons__()
     ## init game displays ##
     # labels widgets for classic
-    tk.Label(_classicGameFrame, textvariable=_hStrVar, font=("Courier", 150), fg='red', bg='black').grid(row=1, column=2, sticky=tk.SW) # todo check if sticky is correct
-    tk.Label(_classicGameFrame, textvariable=_vStrVar, font=("Courier", 150), fg='red', bg='black').grid(row=1, column=0, sticky=tk.SE) # todo check if sticky is correct
+    tk.Label(_classicGameFrame, textvariable=_hStrVar, font=("Courier", 150), fg='red', bg='black').grid(row=1, column=2, padx=(10,200))
+    tk.Label(_classicGameFrame, textvariable=_vStrVar, font=("Courier", 150), fg='red', bg='black').grid(row=1, column=0, padx=(200,10))
     tk.Label(_classicGameFrame, textvariable=_tStrVar, font=("Courier", 90), fg='red', bg='black').grid(row=0,column=1)
+    _classicGameFrame.grid(sticky='nswe')
+    _classicGameFrame.rowconfigure(0, weight=1)
+    _classicGameFrame.columnconfigure(0, weight=1)
+    _classicGameFrame.rowconfigure(1, weight=1)
+    _classicGameFrame.columnconfigure(1, weight=1)
+    _classicGameFrame.columnconfigure(2, weight=1)
+    _classicGameFrame.grid_propagate(0)
     # labels widgets for math
-    tk.Label(_mathGameFrame, textvariable=_hStrVar, font=("Courier", 150), fg='red', bg='black').grid(row=2, column=0,sticky=tk.SE)
-    tk.Label(_mathGameFrame, textvariable=_vStrVar, font=("Courier", 150), fg='red', bg='black').grid(row=2, column=2, sticky=tk.SW)
-    tk.Label(_mathGameFrame, textvariable=_tStrVar, font=("Courier", 60), fg='yellow', bg='black').grid(row=0,column=0)
-    tk.Label(_mathGameFrame, textvariable=_mStrVar, font=("Courier", 100), fg='red', bg='black').grid(row=1, column=0, columnspan=3)
-    tk.Label(_mathGameFrame, textvariable=_sStrVar, font=("Courier", 45), fg='orange', bg='black').grid(row=0,column=2)
+    tk.Label(_mathGameFrame, textvariable=_hStrVar, width=4, font=("Courier", 150), fg='red', bg='black').grid(row=2, column=0, padx=(50,2))
+    tk.Label(_mathGameFrame, textvariable=_vStrVar, width=4, font=("Courier", 150), fg='red', bg='black').grid(row=2, column=2, padx=(2,50))
+    tk.Label(_mathGameFrame, textvariable=_tStrVar, width=4, font=("Courier", 60), fg='yellow', bg='black').grid(row=0,column=0)
+    tk.Label(_mathGameFrame, textvariable=_mStrVar, width=16, font=("Courier", 100), fg='red', bg='black').grid(row=1, column=0, columnspan=3, padx=20)
+    tk.Label(_mathGameFrame, textvariable=_sStrVar, width=4, font=("Courier", 45), fg='orange', bg='black').grid(row=0,column=2)
+    _mathGameFrame.grid(sticky='nswe')
+    _mathGameFrame.rowconfigure(0, weight=1)
+    _mathGameFrame.columnconfigure(0, weight=1)
+    _mathGameFrame.rowconfigure(1, weight=1)
+    _mathGameFrame.columnconfigure(1, weight=1)
+    _mathGameFrame.rowconfigure(2, weight=1)
+    _mathGameFrame.columnconfigure(2, weight=1)
+    _mathGameFrame.grid_propagate(0)
     # begin graphics
     showWindow(WindowType.CONFIG_WINDOW) # begin by showing the config window
     root.mainloop()
-    
+
+def clickButton():
+    global _btnSel, _btns
+    _btns[_btnSel].invoke()
+
+def nextButton():
+    global _btnSel, _btns
+    _btnSel -= 1
+    if _btnSel < 0:
+        _btnSel = len(_btns)-1
+    __updateButtons__()
+
+def previousButton():
+    global _btnSel, _btns
+    _btnSel += 1
+    if _btnSel >= len(_btns):
+        _btnSel = 0
+    __updateButtons__()
 
 def showWindow(winSel):
     global _configFrame, _classicGameFrame, _mathGameFrame, _countDownFrame
@@ -187,7 +245,7 @@ def classicTest(stuff):
     showWindow(WindowType.CLASSIC_WINDOW)
 
 if __name__ == "__main__":
-    init(["Classic", "Multiplication"], classicTest)
+    init(["Classic", "Multiplication"], mathTest)
     pass
 ########################
 

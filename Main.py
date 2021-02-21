@@ -1,6 +1,7 @@
 import time
 import queue, threading
 import random
+import subprocess
 from sys import platform
 from enum import Enum, auto
 
@@ -9,14 +10,26 @@ import Graphics
 
 if platform == "linux" or platform == "linux2":
     import HoopSensor as hs # use gpio
+    import Buttons
 elif platform == "win32":
     import HoopSensorKeyboard as hs # use keyboard
+    import ButtonsKeyboard as Buttons
 
 # globals & constants
-homeGPIO = 17
-visitorGPIO = 27
+
+homeGPIO = 27
+visitorGPIO = 17
+powerGPIO = 3
+playGPIO = 4
+upGPIO = 2
+downGPIO = 22 
+
 homeKey = 'h'
 visitorKey = 'v'
+powerKey = 'p'
+playKey = 's'
+upKey = 'u'
+downKey = 'd'
 
 gameState = None
 gameTime = None
@@ -55,40 +68,100 @@ class BuzzerSelect(Enum):
     GAMEOVER_BUZZER = auto()
 
 class DoubleShotGameObj():
-    def __init__(self, mhomesignal, mvisitorsignal):
-        # game variables
+    def __init__(self, mhomesignal, mvisitorsignal, mbuttons, startCB):
+        global homebuzzer, visitorbuzzer, hurryupbuzzer, gameoverbuzzer, correctbuzzer, wrongbuzzer
+        # config
         self.config = None
-        #self.games = ["Classic", "Multiplication", "Addition"]
+        # game variables
         self.gameState = GameState.IDLE
         self.gameTime = 0
         self.homeIsCorrect = True
         # timers
         self.gameTimer = None
         # buzzers
-        self.homebuzzer = None
-        self.visitorbuzzer = Buzzer(0.5, 'sine', 0.15, 600)
-        self.hurryupbuzzer = None
-        self.gameoverbuzzer = Buzzer(0.75, 'sawtooth', 1.25, 200)
-        self.wrongbuzzer = Buzzer(0.5, 'sawtooth', 0.25, 300)
+        homebuzzer = Audio.Buzzer(0.5, 'sine', 0.15, 800)
+        visitorbuzzer = Audio.Buzzer(0.5, 'sine', 0.15, 600)
+        hurryupbuzzer = Audio.Buzzer(0.25, 'sine', 0.15, 440)
+        gameoverbuzzer = Audio.Buzzer(0.75, 'sawtooth', 1.25, 200)
+        correctbuzzer = Audio.Buzzer(0.5, 'sine', 0.15, 880)
+        wrongbuzzer = Audio.Buzzer(0.5, 'sawtooth', 0.3, 200)
         # sensors
-        self.homeHoop = hs.HoopSensor(mhomesignal, handleScoreEvent)
-        self.visitorHoop = hs.HoopSensor(mvisitorsignal, handleScoreEvent)
-        self.__homeSignal = mhomesignal
-        self.__visitorSignal = mvisitorsignal
+        self.homeHoop = hs.HoopSensor(mhomesignal, "home", handleSignal, self)
+        self.visitorHoop = hs.HoopSensor(mvisitorsignal, "visitor", handleSignal, self)
+        self.pwrBtn = Buttons.Button(mbuttons["power/mute"], "power/mute", handleSignal, self)
+        self.playBtn = Buttons.Button(mbuttons["play"], "play", handleSignal, self)
+        self.upBtn = Buttons.Button(mbuttons["up/pause"], "up/pause", handleSignal, self)
+        self.dwnBtn = Buttons.Button(mbuttons["down/reset"], "down/reset", handleSignal, self)
+        self.signals = {"home":mhomesignal, "visitor":mvisitorsignal}#, "power/mute":mpowermutesignal, "play":mplaysignal, "up/pause":muppausesignal, "down/reset":mdownresetsignal}
+        self.signals.update(mbuttons)
         # internal variables
         self.q = queue.Queue() # semaphore for injecting events into game state machine
         self.__blink = False
-    def __receiveGameConfig(self, conf):
-        self.gameConfig = conf #todo check config validity
-    def startGame(self):
-        self.gameUX.launch()
-        pass
+        self.buttonHeld = True
+        self.currentButton = None
+        self.buttonHoldTime = 0
+        self.buttonTimer = None
+        # other configs
+        self.limboPeriod = 3
+        # callbacks
+        self.startCB = startCB
+    def receiveGameConfig(self, conf):
+        self.config = conf #todo check config validity
+        self.startCB(self)
 
 # functions
 
+def handleButtonHold(gameObj):
+    if gameObj.currentButton == gameObj.signals["power/mute"] and gameObj.buttonHoldTime > 25:
+        subprocess.call("init 0", shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        pass # todo shutdown system here!
+    # if gameObj.gameState == GameState.IDLE:
+    #     if gameObj.uxSelect != "start": # todo figure this out
+    #         if gameObj.currentButton == gameObj.signals["play"] and int(gameObj.buttonHoldTime*10) % 5 == 0:
+    #             pass # todo call inc time set or something like that here
+
+def incBtnTime(gameObj):
+    if gameObj.buttonHeld == True:
+        gameObj.buttonHoldTime += 0.1
+        gameObj.buttonTimer = threading.Timer(0.1, incBtnTime, [gameObj])
+        gameObj.buttonTimer.start()
+        handleButtonHold(gameObj)
+
+def handleButtonEvent(gameObj, btn, btnState):
+    if btnState == False: # button being pressed
+        if gameObj.buttonHeld == False:
+            gameObj.buttonHeld = True
+            gameObj.currentButton = btn
+            gameObj.buttonHoldTime = 0
+            gameObj.buttonTimer = threading.Timer(0.1, incBtnTime, [gameObj])
+            gameObj.buttonTimer.start()
+        if btn == gameObj.signals["power/mute"]:
+            # todo toggle audio mute here!
+            pass
+        elif gameObj.gameState == GameState.IDLE:
+            if btn == gameObj.signals["play"]:
+                Graphics.clickButton()
+            elif btn == gameObj.signals["up/pause"]:
+                Graphics.nextButton()
+            elif btn == gameObj.signals["down/reset"]:
+                Graphics.previousButton()
+    else:
+        gameObj.buttonHeld = False
+        if gameObj.buttonTimer != None:
+            gameObj.buttonTimer.cancel()
+    
+def handleSignal(gameObj, signal, signalState):
+    if signal == gameObj.signals["home"]:
+        handleScoreEvent(gameObj, True)
+    elif signal == gameObj.signals["visitor"]:
+        handleScoreEvent(gameObj, False)
+    elif signal == gameObj.signals["power/mute"] or signal == gameObj.signals["play"] or signal == gameObj.signals["up/pause"] or signal == gameObj.signals["down/reset"]:
+        handleButtonEvent(gameObj, signal, signalState)
+    
 # todo have class constructor take 'name' as argument and keep array of buzzers and move this getter there
 
 def getBuzzer(b):
+    global homebuzzer, visitorbuzzer, hurryupbuzzer, gameoverbuzzer, correctbuzzer, wrongbuzzer
     if b == BuzzerSelect.CORRECT_BUZZER:
         return correctbuzzer
     elif b == BuzzerSelect.WRONG_BUZZER:
@@ -102,151 +175,177 @@ def getBuzzer(b):
     elif b == BuzzerSelect.GAMEOVER_BUZZER:
         return gameoverbuzzer
 
+def generateQuestion(gameObj):
+    # generate new question
+    a = random.randint(gameObj.config.mathConfig.amin, gameObj.config.mathConfig.amax)
+    b = random.randint(gameObj.config.mathConfig.bmin, gameObj.config.mathConfig.bmax)
+    if gameObj.config.gameSelect == gameObj.config.games.index("Multiplication"): # todo refactor to be a function something like get_abco(config)
+        c = a*b
+        op = 'x'
+    else:
+        c = a+b
+        op = '+'
+    if random.randint(0,1) and c > 2:
+        w = c - random.randint(1, c-2)
+    else:
+        w = c + random.randint(2, 6)
+    # update question/answer displays
+    Graphics.writeDisplay(Graphics.DisplayType.MESSAGE_DISPLAY,"%i %s %i"%(a,op,b))
+    if random.randint(0,1):
+        gameObj.homeIsCorrect = True
+        Graphics.writeDisplay(Graphics.DisplayType.HOME_DISPLAY,"%i"%c)
+        Graphics.writeDisplay(Graphics.DisplayType.VISITOR_DISPLAY,"%i"%w)
+    else:
+        gameObj.homeIsCorrect = False
+        Graphics.writeDisplay(Graphics.DisplayType.HOME_DISPLAY,"%i"%w)
+        Graphics.writeDisplay(Graphics.DisplayType.VISITOR_DISPLAY,"%i"%c)
+
 # todo consider having handleXEvent for each gameType each in a respective file (e.g. multiplicationEventHandlers.py, classicEventHandlers.py, etc.)
 def handleTimerEvent(gameObj):
-    global gameState, gameTime
-    if gameState == GameState.ANSWERING:
+    if gameObj.gameState == GameState.ANSWERING:
         # update time display
-        Graphics.writeDisplay(DisplayType.TIME_DISPLAY,'%i'%gameTime)
+        Graphics.writeDisplay(Graphics.DisplayType.TIME_DISPLAY,'%i'%gameObj.gameTime)
         # if time less than hurryUpThreshold, sound hurryupbuzzer
-        if gameTime > 0 and gameTime <= config.hurryupThreshold:
+        if gameObj.gameTime > 0 and gameObj.gameTime <= gameObj.config.hurryupThreshold:
             getBuzzer(BuzzerSelect.HURRYUP_BUZZER).chime()
         # if time is zero, sound timesup buzzer and end the game
-        else:
-            gameState = GameState.GAMEOVER
+        elif gameObj.gameTime == 0:
+            gameObj.gameState = GameState.GAMEOVER
             getBuzzer(BuzzerSelect.GAMEOVER_BUZZER).chime()
-            gameObj.gameTimer = threading.Timer(config.limboPeriod, decGameTime) # stay in gameover state for 2 seconds
-    elif gameState in [GameState.CORRECT, GameState.INCORRECT]:
-        # reset gameTime
-        gameTime = config.timeSet
-        Graphics.writeDisplay(DisplayType.TIME_DISPLAY, '%i'%gameObj.gameTime)
-        # generate new question
-        a = random.randint(config.mathConfig.amin, config.mathConfig.amax)
-        b = random.randint(config.mathConfig.bmin, config.mathConfig.bmax)
-        if config.gameSelect == config.games.index("Multiplication"): # todo refactor to be a function something like get_abco(config)
-            c = a*b
-            op = 'x'
-        else:
-            c = a+b
-            op = '+'
-        if random.randint(0,1) and c > 2:
-            w = c - random.randint(1, c-2)
-        else:
-            w = c + random.randint(2, 6)
-        # update question/answer displays
-        Graphics.writeDisplay(DisplayType.MESSAGE_DISPLAY,"%i %s %i = __"%(a,op,b))
-        if random.randint(0,1):
-            gameObj.homeIsCorrect = True
-            Graphics.writeDisplay(DisplayType.HOME_DISPLAY,"%i"%c)
-            Graphics.writeDisplay(DisplayType.VISITOR_DISPLAY,"%i"%w)
-        else:
-            gameObj.homeIsCorrect = False
-            Graphics.writeDisplay(DisplayType.HOME_DISPLAY,"%i"%w)
-            Graphics.writeDisplay(DisplayType.VISITOR_DISPLAY,"%i"%c)
+            gameObj.gameTimer = threading.Timer(gameObj.limboPeriod, decGameTime, [gameObj]) # stay in gameover state for 2 seconds
+            gameObj.gameTimer.start()
+    elif gameObj.gameState == GameState.CORRECT or gameObj.gameState == GameState.INCORRECT:
+        if gameObj.gameState == GameState.CORRECT:
+            # reset gameTime
+            gameObj.gameTime = gameObj.config.timeSet
+        Graphics.writeDisplay(Graphics.DisplayType.TIME_DISPLAY, '%i'%gameObj.gameTime) # todo, move this to the to of this function and remove others
+        generateQuestion(gameObj)
         # update gameState to ANSWERING
-        gameState = GameState.ANSWERING
-    elif gameState == GameState.PAUSED:
+        gameObj.gameState = GameState.ANSWERING
+    elif gameObj.gameState == GameState.PAUSED:
         # toggle time display (timer)
         if gameObj.__blink == True:
-            Graphics.writeDisplay(DisplayType.TIME_DISPLAY, ' ')
+            Graphics.writeDisplay(Graphics.DisplayType.TIME_DISPLAY, ' ')
             gameObj.__blink = False
         else:
-            Graphics.writeDisplay(DisplayType.TIME_DISPLAY, '%i'%gameObj.gameTime)
+            Graphics.writeDisplay(Graphics.DisplayType.TIME_DISPLAY, '%i'%gameObj.gameTime)
             gameObj.__blink = True
-    elif gameState == GameState.GAMEOVER:
+    elif gameObj.gameState == GameState.GAMEOVER:
         # clear all displays
-        gameObj.gameUX.clear_all_displays()
+        # show config window
         # update gameState to IDLE
-        gameState == GameState.IDLE
+        gameObj.gameState = GameState.IDLE
+        Graphics.showWindow(Graphics.WindowType.CONFIG_WINDOW) # begin by showing the config window
 
-def decGameTime(self):
-    if self.gameTime > 0:
-        self.gameTime -= 1
-        self.gameTimer = threading.Timer(1.0, self.decGameTime)
-    self.q.put(GameEvent.GAMETIME_UPDATED)
+def decGameTime(gameObj):
+    if gameObj.gameTime > 0:
+        gameObj.gameTime -= 1
+        gameObj.gameTimer = threading.Timer(1.0, decGameTime, [gameObj])
+        gameObj.gameTimer.start()
+    gameObj.q.put(GameEvent.GAMETIME_UPDATED)
 
 def handleScoreEvent(gameObj, homeScored):
-    global gameState
-    if gameState == GameState.ANSWERING:
-        if gameObj.gameSelect != gameObj.games.index("Classic"):
-            if (homeScored and gameObj.homeIsCorrect) or (not homeScored and not gameObj.homeScored):
+    if gameObj.gameState == GameState.ANSWERING:
+        if gameObj.config.gameSelect != gameObj.config.games.index("Classic"):
+            if (homeScored and gameObj.homeIsCorrect) or (not homeScored and not gameObj.homeIsCorrect):
                 # pause time
                 if gameObj.gameTimer != None:
                     gameObj.gameTimer.cancel()
-                gameObj.gameTimer = threading.Timer(0.25, gameObj.decGameTime)
+                gameObj.gameTime = gameObj.config.timeSet # todo may not need this here
+                gameObj.gameTimer = threading.Timer(0.25, decGameTime, [gameObj])
+                gameObj.gameTimer.start()
                 # increment score
-                gameObj.homeScore += 1
+                gameObj.homeScore += 1 # we only need to track one players score, so only use homeScore
                 # update score display
-                gameObj.urStringVar.set('%i' % gameObj.homeScore)
+                Graphics.writeDisplay(Graphics.DisplayType.SCORE_DISPLAY, '%i' % gameObj.homeScore)
                 # clear question/answer displays
-                gameObj.messageStrVar.set(' ') # message display is middle row, column 0 with columnspan=3
-                gameObj.hStrVar.set(' ')
-                gameObj.vStrVar.set(' ')
+                Graphics.writeDisplay(Graphics.DisplayType.MESSAGE_DISPLAY, ' ')
+                Graphics.writeDisplay(Graphics.DisplayType.HOME_DISPLAY,' ')
+                Graphics.writeDisplay(Graphics.DisplayType.VISITOR_DISPLAY,' ')
                 # update game state so that after brief delay we generate a new question and resume time
-                gameState = GameState.CORRECT
+                gameObj.gameState = GameState.CORRECT
                 # sound correct buzzer
-                getBuzzer(BuzzerSelect.rightbuzzer).chime()
+                getBuzzer(BuzzerSelect.CORRECT_BUZZER).chime()
             else:
                 # pause time
                 if gameObj.gameTimer != None:
                     gameObj.gameTimer.cancel()
-                gameObj.gameTimer = threading.Timer(1.25, gameObj.decGameTime)
+                gameObj.gameTimer = threading.Timer(1.25, decGameTime, [gameObj])
+                gameObj.gameTimer.start()
                 # show answer
                 if gameObj.homeIsCorrect:
-                    gameObj.vStrVar.set(' ')
+                    Graphics.writeDisplay(Graphics.DisplayType.VISITOR_DISPLAY,' ')
                 else:
-                    gameObj.hStrVar.set(' ')
+                    Graphics.writeDisplay(Graphics.DisplayType.HOME_DISPLAY,' ')
                 # generate new question after 1 second and resume time
-                gameState = GameState.INCORRECT
+                gameObj.gameState = GameState.INCORRECT
                 # sound wrong buzzer
-                getBuzzer(BuzzerSelect.wrongbuzzer).chime()
+                getBuzzer(BuzzerSelect.WRONG_BUZZER).chime()
         else: # game is classic
             if homeScored:
                 # update score board
                 gameObj.homeScore += 1
-                gameObj.hStrVar.set('%i'%gameObj.homeScore)
+                Graphics.writeDisplay(Graphics.DisplayType.HOME_DISPLAY,'%i'%gameObj.homeScore)
                 # sound the buzzer
-                getBuzzer(BuzzerSelect.homebuzzer).chime()
+                getBuzzer(BuzzerSelect.HOME_BUZZER).chime()
             else:
                 gameObj.visitorScore += 1
-                gameObj.vStrVar.set('%i'%gameObj.visitorScore)
+                Graphics.writeDisplay(Graphics.DisplayType.VISITOR_DISPLAY,'%i'%gameObj.visitorScore)
                 # sound the buzzer
-                getBuzzer(BuzzerSelect.visitorbuzzer).chime()
-    elif gameState == GameState.IDLE:
+                getBuzzer(BuzzerSelect.VISITOR_BUZZER).chime()
+    elif gameObj.gameState == GameState.IDLE:
         # todo start new game!
         pass
 
-# functions
+def startGame(gameObj):
+    gameObj.homeScore = 0
+    gameObj.visitorScore = 0
+    Graphics.writeDisplay(Graphics.DisplayType.HOME_DISPLAY,str(gameObj.homeScore))
+    Graphics.writeDisplay(Graphics.DisplayType.VISITOR_DISPLAY,str(gameObj.visitorScore))
+    Graphics.writeDisplay(Graphics.DisplayType.TIME_DISPLAY, str(gameObj.config.timeSet))
+    if gameObj.config.gameSelect == gameObj.config.games.index("Classic"):
+        gameObj.gameState = GameState.ANSWERING # this state will update time display on a time event
+        Graphics.showWindow(Graphics.WindowType.CLASSIC_WINDOW) # show game window
+    elif gameObj.config.gameSelect in [gameObj.config.games.index("Multiplication"), gameObj.config.games.index("Addition")]:
+        Graphics.writeDisplay(Graphics.DisplayType.SCORE_DISPLAY,str(gameObj.homeScore))
+        gameObj.gameState = GameState.CORRECT # this state will generate a new question on a time event
+        Graphics.showWindow(Graphics.WindowType.MATH_WINDOW) # show game window
+    gameObj.gameTime = gameObj.config.timeSet
+    gameObj.gameTimer = threading.Timer(1.01, decGameTime, [gameObj]) # todo, instead of this do the q.put (otherwise there will be a delay??)
+    # todo sound the gameBegin buzzer here
+    #gameObj.q.put(GameEvent.GAMETIME_UPDATED)
+    gameObj.gameTimer.start()
 
-# setup variables
-
-def __init__():
-    gameState = GameState.IDLE
-    gameTime = 30 #?? may not need this any more!
+def gameEventListener(gameObj):
+   while True:
+        event = gameObj.q.get()
+        if event == GameEvent.GAMETIME_UPDATED:
+            handleTimerEvent(gameObj)
+        elif event == GameEvent.HOME_SCORED:
+            handleScoreEvent(gameObj, True)
+        elif event == GameEvent.VISITOR_SCORED:
+            handleScoreEvent(gameObj, False)
+        elif event == GameEvent.BUTTON_PRESSED:
+            pass
+        # do stuf
+        gameObj.q.task_done()
 
 # main program
 if __name__ == "__main__":
     if platform == "linux" or platform == "linux2":
         hSignal = homeGPIO
         vSignal = visitorGPIO
+        btns = {"power/mute":powerGPIO, "play":playGPIO, "up/pause":upGPIO, "down/reset":downGPIO}
     elif platform == "win32":
         hSignal = homeKey
         vSignal = visitorKey
+        btns = {"power/mute":powerKey, "play":playKey, "up/pause":upKey, "down/reset":downKey}
     try:
-        game = DoubleShotGameObj(hSignal,vSignal)
-        game.startGame()
-        while True:
-            event = game.q.get()
-            if event == GameEvent.TIMER_EXPIRED:
-                handleTimerEvent(game)
-            elif event == GameEvent.HOME_SCORED:
-                handleScoreEvent(game, True)
-            elif event == GameEvent.VISITOR_SCORED:
-                handleScoreEvent(game, False)
-            elif event == GameEvent.BUTTON_PRESSED:
-                pass
-            # do stuf
-            game.q.task_done()
+        game = DoubleShotGameObj(hSignal, vSignal, btns, startGame)
+        x = threading.Thread(target=gameEventListener, args=(game,))
+        x.start()
+        Graphics.init(["Classic", "Multiplication", "Addition"], game.receiveGameConfig) # todo this may need to run on its own thread
+        
     except KeyboardInterrupt:
         pass
         # todo clean up

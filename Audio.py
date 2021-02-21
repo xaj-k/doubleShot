@@ -1,10 +1,10 @@
-""" import pyaudio
+import pyaudio
 import numpy as np
 from scipy import signal
 
 pobj = pyaudio.PyAudio()
 
-class BuzzerChime():
+class Buzzer():
     def __init__(self, volume, toneType, duration, frequency):
         self.volume = volume       # range [0.0, 1.0]
         self.duration = duration   # in seconds, may be float
@@ -29,8 +29,8 @@ class BuzzerChime():
          stream.close()
 
     def cleanup(self):
-        pobj.terminate() """
-
+        pobj.terminate()
+"""
 class Buzzer():
     def __init__(self, volume, toneType, duration, frequency):
         pass
@@ -42,4 +42,5 @@ class Buzzer():
          pass
 
     def cleanup(self):
-        pass 
+        pass
+"""
