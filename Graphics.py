@@ -102,6 +102,7 @@ def init(games, startCB):
     root = tk.Tk()
     root.title("Double Shot!")
     root.geometry('1280x1024')
+    root.attributes('-fullscreen',True)
     # todo set fullscreen here
     # create the various windows
     _classicGameFrame = tk.Frame(root, background='black')
