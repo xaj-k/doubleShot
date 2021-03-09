@@ -124,7 +124,7 @@ def incBtnTime(gameObj):
     if gameObj.buttonHeld == True:
         gameObj.buttonHoldTime += 0.1
         gameObj.buttonTimer = threading.Timer(0.1, incBtnTime, [gameObj])
-        gameObj.buttonTimer.start()
+        #gameObj.buttonTimer.start()
         handleButtonHold(gameObj)
 
 def handleButtonEvent(gameObj, btn, btnState):
@@ -136,6 +136,7 @@ def handleButtonEvent(gameObj, btn, btnState):
             gameObj.buttonTimer = threading.Timer(0.1, incBtnTime, [gameObj])
             gameObj.buttonTimer.start()
         if btn == gameObj.signals["power/mute"]:
+            subprocess.call("init 0", shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             # todo toggle audio mute here!
             pass
         elif gameObj.gameState == GameState.IDLE:
