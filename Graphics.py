@@ -156,8 +156,8 @@ def init(games, startCB):
     __updateButtons__()
     ## init game displays ##
     # labels widgets for classic
-    tk.Label(_classicGameFrame, textvariable=_hStrVar, font=("Courier", 150), fg='red', bg='black').grid(row=1, column=2, padx=(10,200))
-    tk.Label(_classicGameFrame, textvariable=_vStrVar, font=("Courier", 150), fg='red', bg='black').grid(row=1, column=0, padx=(200,10))
+    tk.Label(_classicGameFrame, textvariable=_hStrVar, font=("Courier", 150), fg='red', bg='black').grid(row=1, column=0, padx=(10,200))
+    tk.Label(_classicGameFrame, textvariable=_vStrVar, font=("Courier", 150), fg='red', bg='black').grid(row=1, column=2, padx=(200,10))
     tk.Label(_classicGameFrame, textvariable=_tStrVar, font=("Courier", 90), fg='red', bg='black').grid(row=0,column=1)
     _classicGameFrame.grid(sticky='nswe')
     _classicGameFrame.rowconfigure(0, weight=1)
@@ -167,8 +167,8 @@ def init(games, startCB):
     _classicGameFrame.columnconfigure(2, weight=1)
     _classicGameFrame.grid_propagate(0)
     # labels widgets for math
-    tk.Label(_mathGameFrame, textvariable=_hStrVar, width=4, font=("Courier", 150), fg='red', bg='black').grid(row=2, column=0, padx=(50,2))
-    tk.Label(_mathGameFrame, textvariable=_vStrVar, width=4, font=("Courier", 150), fg='red', bg='black').grid(row=2, column=2, padx=(2,50))
+    tk.Label(_mathGameFrame, textvariable=_hStrVar, width=4, font=("Courier", 150), fg='red', bg='black').grid(row=2, column=0, padx=(100,2))
+    tk.Label(_mathGameFrame, textvariable=_vStrVar, width=4, font=("Courier", 150), fg='red', bg='black').grid(row=2, column=2, padx=(2,100))
     tk.Label(_mathGameFrame, textvariable=_tStrVar, width=4, font=("Courier", 60), fg='yellow', bg='black').grid(row=0,column=0)
     tk.Label(_mathGameFrame, textvariable=_mStrVar, width=16, font=("Courier", 100), fg='red', bg='black').grid(row=1, column=0, columnspan=3, padx=20)
     tk.Label(_mathGameFrame, textvariable=_sStrVar, width=4, font=("Courier", 45), fg='orange', bg='black').grid(row=0,column=2)
