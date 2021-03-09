@@ -156,8 +156,8 @@ def init(games, startCB):
     __updateButtons__()
     ## init game displays ##
     # labels widgets for classic
-    tk.Label(_classicGameFrame, textvariable=_hStrVar, font=("Courier", 150), fg='red', bg='black').grid(row=1, column=0, padx=(10,200))
-    tk.Label(_classicGameFrame, textvariable=_vStrVar, font=("Courier", 150), fg='red', bg='black').grid(row=1, column=2, padx=(200,10))
+    tk.Label(_classicGameFrame, textvariable=_hStrVar, font=("Courier", 150), fg='red', bg='black').grid(row=1, column=0, padx=(200,10))
+    tk.Label(_classicGameFrame, textvariable=_vStrVar, font=("Courier", 150), fg='red', bg='black').grid(row=1, column=2, padx=(10,200))
     tk.Label(_classicGameFrame, textvariable=_tStrVar, font=("Courier", 90), fg='red', bg='black').grid(row=0,column=1)
     _classicGameFrame.grid(sticky='nswe')
     _classicGameFrame.rowconfigure(0, weight=1)
